@@ -1,0 +1,7 @@
+# TownyProvinces Configuration File
+# Set the name of the world where TownyProvinces should operate.
+# This must match the world name on your server (e.g., 'world', 'world_nether', etc.)
+world_name: "world"
+
+# Add other configuration options below as needed for your plugin.
+# ...

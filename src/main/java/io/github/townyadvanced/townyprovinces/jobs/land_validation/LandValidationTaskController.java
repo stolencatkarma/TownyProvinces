@@ -23,8 +23,14 @@ public class LandValidationTaskController {
 	}
 	
 	public static void stopTask() {
-		if(landValidationTask != null) {
-			landValidationTask.cancel();
+		if (landValidationTask != null) {
+			try {
+				if (!landValidationTask.isCancelled()) {
+					landValidationTask.cancel();
+				}
+			} catch (IllegalStateException e) {
+				// Task was not scheduled, ignore
+			}
 			landValidationTask = null;
 			landValidationJobStatus = LandValidationJobStatus.STOPPED;
 			Messaging.sendGlobalMessage(Translatable.of("msg_land_validation_job_stopped"));

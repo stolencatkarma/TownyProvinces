@@ -16,6 +16,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.ArrayList;
 
 public class LandvalidationTask extends BukkitRunnable {
 	
@@ -71,47 +75,38 @@ public class LandvalidationTask extends BukkitRunnable {
 	 */
 	private void executeLandValidation() {
 		TownyProvinces.info("Now Running land validation job.");
-		double numProvincesProcessed = 0;
 		Set<Province> copyOfProvincesSet = new HashSet<>(TownyProvincesDataHolder.getInstance().getProvincesSet());
-		for(Province province : copyOfProvincesSet) {
-			if(!province.isLandValidationRequested())
-				numProvincesProcessed++;  //Already processed
-		}
-		for(Province province: copyOfProvincesSet) {
+		List<Province> toValidate = new ArrayList<>();
+		for (Province province : copyOfProvincesSet) {
 			if (province.isLandValidationRequested()) {
-				doLandValidation(province);
-				numProvincesProcessed++;
-			}
-			int percentCompletion = (int)((numProvincesProcessed / copyOfProvincesSet.size()) * 100);
-			TownyProvinces.info("Land Validation Job Progress: " + percentCompletion + "%");
-
-			//Handle any stop requests
-			LandValidationJobStatus landValidationJobStatus = LandValidationTaskController.getLandValidationJobStatus();
-			switch (landValidationJobStatus) {
-				case STOP_REQUESTED:
-					TownyProvinces.info("Land Validation Task: Clearing all validation requests");
-					setLandValidationRequestsForAllProvinces(false);  //Clear all requests
-					TownyProvinces.info("Land Validation Task: Stopping");
-					LandValidationTaskController.stopTask();
-					return;
-				case PAUSE_REQUESTED:
-					TownyProvinces.info("Land Validation Task: Pausing");
-					LandValidationTaskController.pauseTask();
-					return;
-				case RESTART_REQUESTED:
-					TownyProvinces.info("Land Validation Task: Clearing all validation requests");
-					setLandValidationRequestsForAllProvinces(false);  //Clear all requests
-					TownyProvinces.info("Land Validation Task: Saving data");
-					LandValidationTaskController.restartTask();
-					return;
-			case PAUSED:
-			case STARTED:
-			case START_REQUESTED:
-			case STOPPED:
-			default:
-				break;
+				toValidate.add(province);
 			}
 		}
+		int total = copyOfProvincesSet.size();
+		int alreadyProcessed = total - toValidate.size();
+		int numThreads = Math.max(2, Runtime.getRuntime().availableProcessors() / 2);
+		ExecutorService executor = Executors.newFixedThreadPool(numThreads);
+		List<Future<?>> futures = new ArrayList<>();
+		final int[] processed = {alreadyProcessed};
+		for (Province province : toValidate) {
+			futures.add(executor.submit(() -> {
+				doLandValidation(province);
+				synchronized (processed) {
+					processed[0]++;
+					int percentCompletion = (int) (((double) processed[0] / total) * 100);
+					TownyProvinces.info("Land Validation Job Progress: " + percentCompletion + "%");
+				}
+			}));
+		}
+		// Wait for all tasks to finish
+		for (Future<?> future : futures) {
+			try {
+				future.get();
+			} catch (Exception e) {
+				TownyProvinces.severe("Error in land validation thread: " + e.getMessage());
+			}
+		}
+		executor.shutdown();
 		LandValidationTaskController.stopTask();
 		TownyProvinces.info("Land Validation Job Complete.");
 	}
