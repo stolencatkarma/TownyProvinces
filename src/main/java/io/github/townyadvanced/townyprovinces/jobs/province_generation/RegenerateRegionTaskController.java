@@ -23,8 +23,15 @@ public class RegenerateRegionTaskController {
 	}
 
 	public static void endTask() {
-		if(regenerateRegionTask != null) {
-			regenerateRegionTask.cancel();
+		if (regenerateRegionTask != null) {
+			try {
+				// Only cancel if the task is scheduled and not already cancelled
+				if (!regenerateRegionTask.isCancelled()) {
+					regenerateRegionTask.cancel();
+				}
+			} catch (IllegalStateException e) {
+				// Task was not scheduled, ignore
+			}
 			regenerateRegionTask = null;
 		}
 	}

@@ -15,11 +15,17 @@ import org.bukkit.Location;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * This class is used to paint a single region
@@ -126,11 +132,11 @@ public class PaintRegionAction {
 		int maxNumProvinces = calculateMaxNumberOfProvinces();
 		int maxNumRandomProvinces = maxNumProvinces - region.getProtectedLocations().size();
 		int provincesCreated = 0;
-		//Generate provinces at protected locations
-		for(Map.Entry<String,Location> mapEntry: region.getProtectedLocations().entrySet()) {
+		// Generate provinces at protected locations (sequential, usually few)
+		for (Map.Entry<String, Location> mapEntry : region.getProtectedLocations().entrySet()) {
 			TownyProvinces.info("Now generating province at protected location: " + mapEntry.getKey());
 			province = generateProtectedProvince(mapEntry.getValue());
-			if(province == null) {
+			if (province == null) {
 				TownyProvinces.severe("Could not generate province at protected location: " + mapEntry.getKey());
 				return false;
 			} else {
@@ -138,18 +144,56 @@ public class PaintRegionAction {
 				provincesCreated++;
 			}
 		}
-		//Generate provinces at random locations
+
+		// Generate provinces at random locations in parallel, using thread-local copies of unclaimedCoordsMap
+		ExecutorService executor = Executors.newFixedThreadPool(Math.max(2, Runtime.getRuntime().availableProcessors() / 2));
+		List<Future<Province>> futures = new ArrayList<>();
+		// Make a snapshot of unclaimedCoordsMap keys for thread safety
+		List<TPCoord> unclaimedCoordsSnapshot = new ArrayList<>(unclaimedCoordsMap.keySet());
+		int globalAttemptLimit = maxNumRandomProvinces * 200; // Prevent infinite attempts
+		int[] globalAttempts = {0};
+		Object attemptLock = new Object();
 		for (int randomProvinceIndex = 0; randomProvinceIndex < maxNumRandomProvinces; randomProvinceIndex++) {
-			province = generateRandomlyPlacedProvince();
-			if(province == null) {
-				break; //We created as many as we could in this region
-			} else {
-				//Province object created successfully. Add to data holder
-				TownyProvincesDataHolder.getInstance().addProvince(province);
-				provincesCreated++;
+			futures.add(executor.submit(() -> {
+				for (int i = 0; i < 100; i++) {
+					// Check global attempt limit
+					synchronized (attemptLock) {
+						if (globalAttempts[0] >= globalAttemptLimit) return null;
+						globalAttempts[0]++;
+					}
+					// Pick a random location from the snapshot
+					int idx = (int) (Math.random() * unclaimedCoordsSnapshot.size());
+					TPCoord candidateCoord = unclaimedCoordsSnapshot.get(idx);
+					int candX = candidateCoord.getX();
+					int candZ = candidateCoord.getZ();
+					TPCoord candHomeBlockCoord = new TPFinalCoord(candX, candZ);
+					Province candProvince = new Province(candHomeBlockCoord);
+					if (validateBrushPosition(candHomeBlockCoord.getX(), candHomeBlockCoord.getZ(), candProvince)) {
+						return candProvince;
+					}
+				}
+				return null;
+			}));
+		}
+		List<Province> createdProvinces = new ArrayList<>();
+		for (Future<Province> future : futures) {
+			try {
+				Province result = future.get();
+				if (result != null) {
+					createdProvinces.add(result);
+				}
+			} catch (InterruptedException | ExecutionException e) {
+				TownyProvinces.severe("Error generating province in thread: " + e.getMessage());
 			}
 		}
-		TownyProvinces.info("" + provincesCreated + " province objects created.");
+		executor.shutdown();
+		for (Province p : createdProvinces) {
+			ProvinceClaimBrush brush = new ProvinceClaimBrush(p);
+			claimChunksCoveredByBrush(brush);
+			TownyProvincesDataHolder.getInstance().addProvince(p);
+			provincesCreated++;
+		}
+		TownyProvinces.info(provincesCreated + " province objects created.");
 		return true;
 	}
 	
@@ -191,32 +235,7 @@ public class PaintRegionAction {
 	 * 
 	 * @return the province on success, or null if you fail (usually due to map being full)
 	 */
-	private @Nullable Province generateRandomlyPlacedProvince() {
-		//Establish boundaries of where the homeblock might be placed
-		double xLowest = region.getRegionMinX() + region.getBrushSquareRadiusInChunks() + 3;
-		double xHighest = region.getRegionMaxX() - region.getBrushSquareRadiusInChunks() - 3;
-		double zLowest = region.getRegionMinZ() + region.getBrushSquareRadiusInChunks() + 3;
-		double zHighest = region.getRegionMaxZ() - region.getBrushSquareRadiusInChunks() - 3;
-		//Try a few times to place the homeblock
-		for(int i = 0; i < 100; i++) {
-			//Pick a random location
-			double x = xLowest + (Math.random() * (xHighest - xLowest));
-			double z = zLowest + (Math.random() * (zHighest - zLowest));
-			Coord coord = Coord.parseCoord((int)x,(int)z);
-			int xCoord = coord.getX();
-			int zCoord = coord.getZ();
-			TPCoord homeBlockCoord = new TPFinalCoord(xCoord, zCoord);
-			//Create province object
-			Province province = new Province(homeBlockCoord);
-			//Validate province position
-			if(validateBrushPosition(homeBlockCoord.getX(), homeBlockCoord.getZ(), province)) {
-				ProvinceClaimBrush brush = new ProvinceClaimBrush(province);
-				claimChunksCoveredByBrush(brush);
-				return province;
-			}
-		}
-		return null;
-	}
+	// generateRandomlyPlacedProvince() is now unused and removed due to parallel refactor
 	
 	private boolean executeChunkClaimCompetition() {
 		TownyProvinces.info("Chunk Claim Competition Started");

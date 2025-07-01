@@ -114,10 +114,14 @@ public class TownyProvincesDataHolder {
 
 	public void deleteProvince(Province province, Map<TPCoord, TPCoord> unclaimedCoordsMap) {
 		List<TPCoord> coordsInProvince = coordsInProvinceMap.get(province);
-		TownyProvinces.info("Deleting province: " + province.getId() + " with " + coordsInProvince.size() + " coordinates.");
-		for(TPCoord coord: coordsInProvince) {
-			coordProvinceMap.remove(coord);
-			unclaimedCoordsMap.put(coord,coord);
+		if (coordsInProvince == null) {
+			TownyProvinces.info("Deleting province: " + province.getId() + " with 0 coordinates (null list).");
+		} else {
+			TownyProvinces.info("Deleting province: " + province.getId() + " with " + coordsInProvince.size() + " coordinates.");
+			for (TPCoord coord : coordsInProvince) {
+				coordProvinceMap.remove(coord);
+				unclaimedCoordsMap.put(coord, coord);
+			}
 		}
 		provincesSet.remove(province);
 		coordsInProvinceMap.remove(province);
