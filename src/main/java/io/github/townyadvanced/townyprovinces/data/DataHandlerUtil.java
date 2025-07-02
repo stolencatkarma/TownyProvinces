@@ -78,7 +78,7 @@ DataHandlerUtil {
 		return  result.toString();
 	}
 
-	private static void loadAllProvinces() {
+	public static void loadAllProvinces() {
 		TownyProvinces.info("Now Loading Provinces");
 		List<File> provinceFiles = FileUtil.readListOfFiles(FileUtil.PROVINCES_FOLDER_PATH);
 		for(File provinceFile: provinceFiles) {
@@ -91,6 +91,7 @@ DataHandlerUtil {
 		//Read values from province file
 		Map<String,String> fileEntries = FileMgmt.loadFileIntoHashMap(provinceFile);
 		TPCoord homeBlock = unpackCoord(fileEntries.get("home_block"));
+
 		//Create province object
 		Province province = new Province(homeBlock);
 		//Read more values
@@ -130,7 +131,7 @@ DataHandlerUtil {
 		//Add coords to coord-province map
 		Set<TPCoord> coords = unpackCoords(fileEntries.get("coords"));
 		for(TPCoord coord: coords) {
-			TownyProvincesDataHolder.getInstance().getCoordProvinceMap().put(coord, province);
+			TownyProvincesDataHolder.getInstance().claimCoordForProvince(coord, province);
 		}
 	}
 

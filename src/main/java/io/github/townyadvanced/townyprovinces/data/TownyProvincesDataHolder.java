@@ -111,6 +111,10 @@ public class TownyProvincesDataHolder {
 		return provincesSet;
 	}
 
+	public boolean areProvincesLoaded() {
+		return !provincesSet.isEmpty();
+	}
+
 
 	public void deleteProvince(Province province, Map<TPCoord, TPCoord> unclaimedCoordsMap) {
 		List<TPCoord> coordsInProvince = coordsInProvinceMap.get(province);

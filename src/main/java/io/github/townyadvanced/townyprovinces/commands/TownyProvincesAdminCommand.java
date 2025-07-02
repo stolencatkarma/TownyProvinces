@@ -28,6 +28,7 @@ import org.bukkit.command.TabExecutor;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
+import java.io.File;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -36,21 +37,21 @@ import java.util.Set;
 public class TownyProvincesAdminCommand implements TabExecutor {
 
    private static final List<String> adminTabCompletes = Arrays.asList("province","region","landvalidationjob", "reload", "claimAllPlots");
-	private static final List<String> adminTabCompletesProvince = Arrays.asList("settype");
+   private static final List<String> adminTabCompletesProvince = Arrays.asList("settype", "homeblock", "border");
 	private static final List<String> adminTabCompletesProvinceSetType = Arrays.asList("civilized","sea","wasteland");
 	private static final List<String> adminTabCompletesRegion = Arrays.asList("regenerate", "newtowncostperchunk", "upkeeptowncostperchunk");
 	private static final List<String> adminTabCompletesSeaProvincesJob = Arrays.asList("status", "start", "stop", "restart", "pause");
 
-	public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
+   public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
 
-		switch (args[0].toLowerCase()) {
-			case "province":
-				if (args.length == 2) {
-					return NameUtil.filterByStart(adminTabCompletesProvince, args[1]);
-				} else if (args.length == 3) {
-					return NameUtil.filterByStart(adminTabCompletesProvinceSetType, args[2]);
-				}
-				break;
+	   switch (args[0].toLowerCase()) {
+		   case "province":
+			   if (args.length == 2) {
+				   return NameUtil.filterByStart(adminTabCompletesProvince, args[1]);
+			   } else if (args.length == 3 && args[1].equalsIgnoreCase("settype")) {
+				   return NameUtil.filterByStart(adminTabCompletesProvinceSetType, args[2]);
+			   }
+			   break;
 			case "region":
 				if (args.length == 2)
 					return NameUtil.filterByStart(adminTabCompletesRegion, args[1]);
@@ -137,33 +138,39 @@ public class TownyProvincesAdminCommand implements TabExecutor {
 	   }
 	   org.bukkit.Location loc = player.getLocation();
 	   String worldName = loc.getWorld().getName();
-	   int x = loc.getBlockX() >> 4;
-	   int z = loc.getBlockZ() >> 4;
-	   Province province = TownyProvincesDataHolder.getInstance().getProvinceAtCoord(x, z);
+	   int blockX = loc.getBlockX();
+	   int blockZ = loc.getBlockZ();
+	   int x = blockX >> 4;
+	   int z = blockZ >> 4;
+	   // Re-read province data for the home block
+	   File provinceFile = new File(TownyProvinces.getPlugin().getDataFolder().toPath().resolve("data/provinces/province_x" + x + "_z_" + z + ".yml").toString());
+	   Province province = null;
+	   if (provinceFile.exists()) {
+		   io.github.townyadvanced.townyprovinces.data.DataHandlerUtil.loadProvince(provinceFile);
+		   province = TownyProvincesDataHolder.getInstance().getProvinceAtCoord(x, z);
+	   } else {
+		   province = TownyProvincesDataHolder.getInstance().getProvinceAtCoord(x, z);
+	   }
 	   if (province == null) {
 		   Messaging.sendMsg(sender, Translatable.of("msg_err_invalid_province_location"));
 		   return;
 	   }
-	   // 1. Only allow if standing in wilderness
-	   com.palmergames.bukkit.towny.object.WorldCoord startCoord = new com.palmergames.bukkit.towny.object.WorldCoord(worldName, x, z);
-	   if (!com.palmergames.bukkit.towny.TownyAPI.getInstance().isWilderness(startCoord)) {
-		   Messaging.sendMsg(sender, Translatable.of("msg_err_not_in_wilderness"));
+	   // Require player to stand on the home block
+	   io.github.townyadvanced.townyprovinces.objects.TPCoord homeBlock = province.getHomeBlock();
+	   // Debug: Print player and home block positions
+	   TownyProvinces.info("[claimAllPlots] Player block position: x=" + blockX + ", z=" + blockZ + ", chunk x=" + x + ", chunk z=" + z);
+	   TownyProvinces.info("[claimAllPlots] Province home block: chunk x=" + homeBlock.getX() + ", chunk z=" + homeBlock.getZ());
+	   if (x != homeBlock.getX() || z != homeBlock.getZ()) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_not_on_homeblock"));
 		   return;
 	   }
-	   // 2. Check if there is at least one town block in the province
-	   boolean hasTownBlock = false;
-	   for (io.github.townyadvanced.townyprovinces.objects.TPCoord tpCoord : province.getListOfCoordsInProvince()) {
-		   com.palmergames.bukkit.towny.object.WorldCoord wc = new com.palmergames.bukkit.towny.object.WorldCoord(worldName, tpCoord.getX(), tpCoord.getZ());
-		   if (!com.palmergames.bukkit.towny.TownyAPI.getInstance().isWilderness(wc)) {
-			   hasTownBlock = true;
-			   break;
-		   }
-	   }
-	   if (!hasTownBlock) {
+	   // Check if the province's home block is claimed (main world only)
+	   com.palmergames.bukkit.towny.object.WorldCoord homeBlockWC = new com.palmergames.bukkit.towny.object.WorldCoord(worldName, homeBlock.getX(), homeBlock.getZ());
+	   if (com.palmergames.bukkit.towny.TownyAPI.getInstance().isWilderness(homeBlockWC)) {
 		   Messaging.sendMsg(sender, Translatable.of("msg_err_no_townblock_in_province"));
 		   return;
 	   }
-	   // 3. Flood fill from the player's location to find all contiguous wilderness plots within the province
+	   // Flood fill from the player's location to find all contiguous wilderness plots within the province
 	   java.util.Set<String> visited = new java.util.HashSet<>();
 	   java.util.Queue<io.github.townyadvanced.townyprovinces.objects.TPCoord> queue = new java.util.LinkedList<>();
 	   io.github.townyadvanced.townyprovinces.objects.TPCoord startTPCoord = new io.github.townyadvanced.townyprovinces.objects.TPFinalCoord(x, z);
@@ -271,17 +278,171 @@ public class TownyProvincesAdminCommand implements TabExecutor {
 		TownyProvinces.getPlugin().reloadConfigsAndData();
 	}
 
-	private void parseProvinceCommand(CommandSender sender, String[] args) {
-		if (args.length < 2) {
-			showHelp(sender);
-			return;
-		}
-		if (args[0].equalsIgnoreCase("settype")) {
-			parseProvinceSetTypeCommand(sender, args);
-		} else {
-			showHelp(sender);
-		}
-	}
+   private void parseProvinceCommand(CommandSender sender, String[] args) {
+	   if (args.length < 1) {
+		   showHelp(sender);
+		   return;
+	   }
+	   if (args[0].equalsIgnoreCase("settype")) {
+		   if (args.length < 2) {
+			   showHelp(sender);
+			   return;
+		   }
+		   parseProvinceSetTypeCommand(sender, args);
+	   } else if (args[0].equalsIgnoreCase("homeblock")) {
+		   parseProvinceHomeBlockCommand(sender);
+	   } else if (args[0].equalsIgnoreCase("border")) {
+		   parseProvinceBorderCommand(sender);
+	   } else {
+		   showHelp(sender);
+	   }
+   }
+
+   /**
+	* Shows the border of the province at the player's location.
+	*/
+   private void parseProvinceBorderCommand(CommandSender sender) {
+	   if (!(sender instanceof Player)) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_command_disable"));
+		   return;
+	   }
+	   Player player = (Player) sender;
+	   org.bukkit.Location loc = player.getLocation();
+	   int x = loc.getBlockX() >> 4;
+	   int z = loc.getBlockZ() >> 4;
+	   Province province = TownyProvincesDataHolder.getInstance().getProvinceAtCoord(x, z);
+	   if (province == null) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_invalid_province_location"));
+		   TownyProvinces.info("[BorderCmd] No province found at player's location: " + x + "," + z);
+		   return;
+	   }
+
+	   Messaging.sendMsg(sender, "Displaying border for province: " + province.getId());
+	   TownyProvinces.info("[BorderCmd] Province found: " + province.getId() + ". It has " + province.getListOfCoordsInProvince().size() + " coords.");
+
+	   //Get all border chunks
+	   java.util.List<io.github.townyadvanced.townyprovinces.objects.TPCoord> borderCoords = new java.util.ArrayList<>();
+	   for (io.github.townyadvanced.townyprovinces.objects.TPCoord coord : province.getListOfCoordsInProvince()) {
+		   boolean isBorder = false;
+		   int[][] directions = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}};
+		   for (int[] dir : directions) {
+			   Province neighbor = TownyProvincesDataHolder.getInstance().getProvinceAtCoord(coord.getX() + dir[0], coord.getZ() + dir[1]);
+			   if (neighbor == null || !neighbor.equals(province)) {
+				   isBorder = true;
+				   break;
+			   }
+		   }
+		   if (isBorder) {
+			   borderCoords.add(coord);
+		   }
+	   }
+	   TownyProvinces.info("[BorderCmd] Found " + borderCoords.size() + " total border chunks.");
+
+	   if (borderCoords.isEmpty()) {
+		   Messaging.sendMsg(sender, "Could not find any border chunks for this province.");
+		   return;
+	   }
+
+	   // Use a scheduler to show particles in an animated way
+	   new org.bukkit.scheduler.BukkitRunnable() {
+		   int animationTick = 0;
+		   final int durationTicks = 200; // 10 seconds
+		   final int viewDistanceChunks = 8; //Only show particles within this many chunks of the player
+		   final int particlesPerPulse = 30; //How many border chunks to light up at once
+		   final org.bukkit.Particle particle = org.bukkit.Particle.FLAME;
+		   final org.bukkit.World world = player.getWorld();
+
+		   @Override
+		   public void run() {
+			   if (animationTick > durationTicks || !player.isOnline()) {
+				   this.cancel();
+				   return;
+			   }
+
+			   org.bukkit.Location playerLoc = player.getLocation();
+			   int playerChunkX = playerLoc.getBlockX() >> 4;
+			   int playerChunkZ = playerLoc.getBlockZ() >> 4;
+
+			   // Determine which segment of the border to show
+			   int currentPulse = animationTick / 10;
+			   int startIndex = (currentPulse * particlesPerPulse) % borderCoords.size();
+
+			   for (int i = 0; i < particlesPerPulse; i++) {
+				   int currentIndex = (startIndex + i) % borderCoords.size();
+				   io.github.townyadvanced.townyprovinces.objects.TPCoord coord = borderCoords.get(currentIndex);
+				   int chunkX = coord.getX();
+				   int chunkZ = coord.getZ();
+
+				   //Only show particles near the player
+				   if (Math.abs(chunkX - playerChunkX) > viewDistanceChunks || Math.abs(chunkZ - playerChunkZ) > viewDistanceChunks) {
+					   continue;
+				   }
+
+				   //Only show particles in loaded chunks
+				   if (!world.isChunkLoaded(chunkX, chunkZ)) {
+					   continue;
+				   }
+
+				   //Simplified: Particle in the middle of the chunk
+				   int bx = (chunkX << 4) + 8;
+				   int bz = (chunkZ << 4) + 8;
+				   int by = world.getHighestBlockYAt(bx, bz) + 2;
+				   org.bukkit.Location particleLoc = new org.bukkit.Location(world, bx, by, bz);
+				   world.spawnParticle(particle, particleLoc, 5, 0.5, 0.5, 0.5, 0);
+			   }
+			   animationTick += 10;
+		   }
+	   }.runTaskTimer(TownyProvinces.getPlugin(), 0L, 10L); // Run every 10 ticks (half a second)
+   }
+
+   /**
+	* Shows the home block chunk coordinates and province name for the province at the player's location.
+	*/
+   private void parseProvinceHomeBlockCommand(CommandSender sender) {
+	   if (!(sender instanceof Player)) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_command_disable"));
+		   return;
+	   }
+	   Player player = (Player) sender;
+	   org.bukkit.Location loc = player.getLocation();
+	   int x = loc.getBlockX() >> 4;
+	   int z = loc.getBlockZ() >> 4;
+	   Province province = TownyProvincesDataHolder.getInstance().getProvinceAtCoord(x, z);
+	   if (province == null) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_invalid_province_location"));
+		   return;
+	   }
+	   io.github.townyadvanced.townyprovinces.objects.TPCoord homeBlock = province.getHomeBlock();
+	   String msg = "Province ID: " + province.getId() + ", Home Block Chunk: x=" + homeBlock.getX() + ", z=" + homeBlock.getZ();
+	   Messaging.sendMsg(sender, msg);
+
+	   // Sparkle effect: spawn particles in a ring at the center of the home block chunk
+	   org.bukkit.World world = player.getWorld();
+	   int chunkX = homeBlock.getX();
+	   int chunkZ = homeBlock.getZ();
+	   double centerX = (chunkX << 4) + 8.5;
+	   double centerZ = (chunkZ << 4) + 8.5;
+	   int y = world.getHighestBlockYAt((int)centerX, (int)centerZ) + 1;
+	   // Show a ring of particles for 3 seconds (60 ticks)
+	   int durationTicks = 60;
+	   int points = 24;
+	   org.bukkit.Particle particle = org.bukkit.Particle.VILLAGER_HAPPY;
+	   for (int t = 0; t < durationTicks; t += 5) { // Fire every 5 ticks
+		   int delay = t;
+		   new org.bukkit.scheduler.BukkitRunnable() {
+			   @Override
+			   public void run() {
+				   for (int i = 0; i < points; i++) {
+					   double angle = 2 * Math.PI * i / points;
+					   double dx = 7.5 * Math.cos(angle); // 7.5 block radius
+					   double dz = 7.5 * Math.sin(angle);
+					   org.bukkit.Location particleLoc = new org.bukkit.Location(world, centerX + dx, y, centerZ + dz);
+					   world.spawnParticle(particle, particleLoc, 1, 0, 0, 0, 0);
+				   }
+			   }
+		   }.runTaskLater(TownyProvinces.getPlugin(), delay);
+	   }
+   }
 	
 	private void parseRegionCommand(CommandSender sender, String[] args) {
 		if (args.length < 2) {

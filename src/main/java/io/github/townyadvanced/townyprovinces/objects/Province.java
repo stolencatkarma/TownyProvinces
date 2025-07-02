@@ -11,7 +11,7 @@ import java.util.Set;
 
 public class Province {
 	
-	private final TPCoord homeBlock;
+	private TPCoord homeBlock;
 	private double newTownCost;  //The base cost, not adjusted by biome
 	private double upkeepTownCost;  //The base cost, not adjusted by biome
 	private ProvinceType type;  //Civilized, Sea, Wasteland
@@ -51,6 +51,10 @@ public class Province {
 	
 	public TPCoord getHomeBlock() {
 		return homeBlock;
+	}
+
+	public void setHomeBlock(TPCoord homeBlock) {
+		this.homeBlock = homeBlock;
 	}
 	
 	public void setNewTownCost(double d) {
@@ -171,4 +175,3 @@ public class Province {
 		this.fillColour = fillColour;
 	}
 }
- 

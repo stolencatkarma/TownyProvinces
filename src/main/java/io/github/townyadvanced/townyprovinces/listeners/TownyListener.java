@@ -2,6 +2,7 @@ package io.github.townyadvanced.townyprovinces.listeners;
 
 import com.palmergames.bukkit.towny.TownyAPI;
 import com.palmergames.bukkit.towny.TownySettings;
+import com.palmergames.bukkit.towny.event.NewTownEvent;
 import com.palmergames.bukkit.towny.event.PreNewTownEvent;
 import com.palmergames.bukkit.towny.event.TownPreClaimEvent;
 import com.palmergames.bukkit.towny.event.TownUpkeepCalculationEvent;
@@ -16,6 +17,7 @@ import com.palmergames.bukkit.towny.object.Translation;
 import com.palmergames.bukkit.towny.object.TranslationLoader;
 import com.palmergames.bukkit.towny.object.WorldCoord;
 import io.github.townyadvanced.townyprovinces.TownyProvinces;
+import io.github.townyadvanced.townyprovinces.data.DataHandlerUtil;
 import io.github.townyadvanced.townyprovinces.data.TownyProvincesDataHolder;
 import io.github.townyadvanced.townyprovinces.objects.Province;
 import io.github.townyadvanced.townyprovinces.objects.TPCoord;
@@ -75,6 +77,13 @@ public class TownyListener implements Listener {
 		if (!event.getTownWorldCoord().getWorldName().equalsIgnoreCase(TownyProvincesSettings.getWorldName())) {
 			return;
 		}
+		
+		//Ensure all province data is loaded
+		if(!TownyProvincesDataHolder.getInstance().areProvincesLoaded()) {
+			TownyProvinces.info("Provinces were not loaded. Loading now.");
+			DataHandlerUtil.loadAllProvinces();
+		}
+		
 		/*
 		 * Can't place new town outside a province
 		 * Note: unless some hacking has occurred,
@@ -106,6 +115,27 @@ public class TownyListener implements Listener {
 			int regionSettlementCost = (int)(TownyProvincesSettings.isBiomeCostAdjustmentsEnabled() ? province.getBiomeAdjustedNewTownCost() : province.getNewTownCost());
 			double totalNewTownCost = TownySettings.getNewTownPrice() + regionSettlementCost;
 			event.setPrice(totalNewTownCost);
+		}
+	}
+
+	@EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+	public void onNewTown(NewTownEvent event) {
+		if (!TownyProvincesSettings.isTownyProvincesEnabled()) {
+			return;
+		}
+		//No restriction if it is not in the TP-enabled world
+		if (!event.getTown().getWorld().getName().equalsIgnoreCase(TownyProvincesSettings.getWorldName())) {
+			return;
+		}
+
+		Coord coord = event.getTown().getHomeBlockOrNull().getCoord();
+		Province province = TownyProvincesDataHolder.getInstance().getProvinceAtCoord(coord.getX(), coord.getZ());
+		if (province != null) {
+			//The province now has a town, so set the homeblock to the town's homeblock
+			TPCoord newHomeBlock = new io.github.townyadvanced.townyprovinces.objects.TPFinalCoord(coord.getX(), coord.getZ());
+			province.setHomeBlock(newHomeBlock);
+			province.saveData();
+			TownyProvinces.info("Province " + province.getId() + " home block set to " + newHomeBlock.getX() + "," + newHomeBlock.getZ() + " by creation of new town " + event.getTown().getName());
 		}
 	}
 
@@ -165,6 +195,12 @@ public class TownyListener implements Listener {
 		
 		//Apply special rules if claiming outside home province
 		Province provinceOfClaimingTown = TownyProvincesDataHolder.getInstance().getProvinceAtCoord(event.getTown().getHomeBlockOrNull().getX(), event.getTown().getHomeBlockOrNull().getZ());
+		if (provinceOfClaimingTown == null) {
+			//This should not be possible if the town has a homeblock, but we check just in case.
+			event.setCancelled(true);
+			event.setCancelMessage(TownyProvinces.getTranslatedPrefix() + "Could not find the province for your town's homeblock.");
+			return;
+		}
 		if(!provinceOfClaimingTown.equals(provinceAtClaimLocation)) {
 
 			//For outposts, cancel if the target province does not allow foreign outposts
