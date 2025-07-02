@@ -7,7 +7,7 @@ import com.palmergames.bukkit.towny.object.TranslationLoader;
 import com.palmergames.bukkit.towny.scheduling.TaskScheduler;
 import com.palmergames.bukkit.towny.scheduling.impl.BukkitTaskScheduler;
 import com.palmergames.bukkit.towny.scheduling.impl.FoliaTaskScheduler;
-import com.palmergames.bukkit.util.Colors;
+// import com.palmergames.bukkit.util.Colors; // Removed unused import
 import com.palmergames.bukkit.util.Version;
 import io.github.townyadvanced.townyprovinces.commands.TownyProvincesAdminCommand;
 import io.github.townyadvanced.townyprovinces.data.DataHandlerUtil;
@@ -52,7 +52,7 @@ public class TownyProvinces extends JavaPlugin {
 	@Override
 	public void onEnable() {
 
-		printSickAsciiArt();
+		// printSickAsciiArt(); // Removed ASCII art banner
 		
 		//Load Mandatory stuff
 		if(!checkTownyVersion()
@@ -78,19 +78,7 @@ public class TownyProvinces extends JavaPlugin {
 		info("TownyProvinces Loaded Successfully");
 	}
 
-	private void printSickAsciiArt() {
-		String art = System.lineSeparator() + "" + 
-		System.lineSeparator() + "_________ _______           _                 _______  _______  _______          _________ _        _______  _______  _______ " +
-		System.lineSeparator() + "\\__   __/(  ___  )|\\     /|( (    /||\\     /|(  ____ )(  ____ )(  ___  )|\\     /|\\__   __/( (    /|(  ____ \\(  ____ \\(  ____ \\" +
-		System.lineSeparator() + "   ) (   | (   ) || )   ( ||  \\  ( |( \\   / )| (    )|| (    )|| (   ) || )   ( |   ) (   |  \\  ( || (    \\/| (    \\/| (    \\/" +
-		System.lineSeparator() + "   | |   | |   | || | _ | ||   \\ | | \\ (_) / | (____)|| (____)|| |   | || |   | |   | |   |   \\ | || |      | (__    | (_____ " +
-		System.lineSeparator() + "   | |   | |   | || |( )| || (\\ \\) |  \\   /  |  _____)|     __)| |   | |( (   ) )   | |   | (\\ \\) || |      |  __)   (_____  )" +
-		System.lineSeparator() + "   | |   | |   | || || || || | \\   |   ) (   | (      | (\\ (   | |   | | \\ \\_/ /    | |   | | \\   || |      | (            ) |" +
-		System.lineSeparator() + "   | |   | (___) || () () || )  \\  |   | |   | )      | ) \\ \\__| (___) |  \\   /  ___) (___| )  \\  || (____/\\| (____/\\/\\____) |" +
-		System.lineSeparator() + "   )_(   (_______)(_______)|/    )_)   \\_/   |/       |/   \\__/(_______)   \\_/   \\_______/|/    )_)(_______/(_______/\\_______)" +
-		System.lineSeparator() + "                                                         By Goosius" + System.lineSeparator();
-		Bukkit.getConsoleSender().sendMessage(Colors.translateColorCodes(art));
-	}
+	// Removed printSickAsciiArt() and ASCII art banner
 	
 	public void reloadConfigsAndData() {
 		if(!loadConfig()

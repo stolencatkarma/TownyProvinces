@@ -1,12 +1,12 @@
 {
 	"version": "2.0.0",
 	"tasks": [
-		{
-			"type": "shell",
-			"label": "Build TownyProvinces plugin",
-			"command": "mvn clean package",
-			"group": "build",
-			"isBackground": false
-		}
+	   {
+		   "type": "shell",
+		   "label": "Build and Deploy TownyProvinces plugin",
+		   "command": "mvn clean package && copy target\\TownyProvinces-*.jar \"D:\\dev-server-1.21.4-towny\\plugins\\\"",
+		   "group": "build",
+		   "isBackground": false
+	   }
 	]
 }
