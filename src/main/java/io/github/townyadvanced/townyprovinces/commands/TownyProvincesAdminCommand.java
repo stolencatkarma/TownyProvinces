@@ -35,7 +35,7 @@ import java.util.Set;
 
 public class TownyProvincesAdminCommand implements TabExecutor {
 
-	private static final List<String> adminTabCompletes = Arrays.asList("province","region","landvalidationjob", "reload");
+   private static final List<String> adminTabCompletes = Arrays.asList("province","region","landvalidationjob", "reload", "claimAllPlots");
 	private static final List<String> adminTabCompletesProvince = Arrays.asList("settype");
 	private static final List<String> adminTabCompletesProvinceSetType = Arrays.asList("civilized","sea","wasteland");
 	private static final List<String> adminTabCompletesRegion = Arrays.asList("regenerate", "newtowncostperchunk", "upkeeptowncostperchunk");
@@ -94,45 +94,178 @@ public class TownyProvincesAdminCommand implements TabExecutor {
 				Messaging.sendErrorMsg(sender, Translatable.of("msg_err_command_disable"));
 				return;
 			}
-			switch (args[0]) {
-				case "province":
-					parseProvinceCommand(sender, StringMgmt.remFirstArg(args));
-					break;
-				case "region":
-					parseRegionCommand(sender, StringMgmt.remFirstArg(args));
-					break;
-				case "landvalidationjob":
-					parseLandValidationJobCommand(sender, StringMgmt.remFirstArg(args));
-					break;
-				case "reload":
-					parseReloadCommand(sender, StringMgmt.remFirstArg(args));
-					break;
+		   switch (args[0]) {
+			   case "province":
+				   parseProvinceCommand(sender, StringMgmt.remFirstArg(args));
+				   break;
+			   case "region":
+				   parseRegionCommand(sender, StringMgmt.remFirstArg(args));
+				   break;
+			   case "landvalidationjob":
+				   parseLandValidationJobCommand(sender, StringMgmt.remFirstArg(args));
+				   break;
+			   case "reload":
+				   parseReloadCommand(sender, StringMgmt.remFirstArg(args));
+				   break;
+			   case "claimAllPlots":
+				   parseClaimAllPlotsCommand(sender);
+				   break;
+			   default:
+				   showHelp(sender);
+		   }
+	   }
+	   }
 
-				/*
-				 * Show help if no command found.
-				 */
-				default:
-					showHelp(sender);
-			}
-		} else {
-			if (sender instanceof Player && !sender.hasPermission(TownyProvincesPermissionNodes.TOWNYPROVINCES_ADMIN.getNode())) {
-				Messaging.sendErrorMsg(sender, Translatable.of("msg_err_command_disable"));
-				return;
-			}
-			showHelp(sender);
-		}
-	}
+   /**
+	* Claims all unclaimed plots in the province where the player is standing for their own town.
+	*/
+   private void parseClaimAllPlotsCommand(CommandSender sender) {
+	   if (!(sender instanceof Player)) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_command_disable"));
+		   return;
+	   }
+	   Player player = (Player) sender;
+	   com.palmergames.bukkit.towny.object.Resident resident = com.palmergames.bukkit.towny.TownyAPI.getInstance().getResident(player);
+	   if (resident == null || !resident.hasTown()) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_command_disable"));
+		   return;
+	   }
+	   com.palmergames.bukkit.towny.object.Town town = resident.getTownOrNull();
+	   if (town == null) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_command_disable"));
+		   return;
+	   }
+	   org.bukkit.Location loc = player.getLocation();
+	   String worldName = loc.getWorld().getName();
+	   int x = loc.getBlockX() >> 4;
+	   int z = loc.getBlockZ() >> 4;
+	   Province province = TownyProvincesDataHolder.getInstance().getProvinceAtCoord(x, z);
+	   if (province == null) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_invalid_province_location"));
+		   return;
+	   }
+	   // 1. Only allow if standing in wilderness
+	   com.palmergames.bukkit.towny.object.WorldCoord startCoord = new com.palmergames.bukkit.towny.object.WorldCoord(worldName, x, z);
+	   if (!com.palmergames.bukkit.towny.TownyAPI.getInstance().isWilderness(startCoord)) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_not_in_wilderness"));
+		   return;
+	   }
+	   // 2. Check if there is at least one town block in the province
+	   boolean hasTownBlock = false;
+	   for (io.github.townyadvanced.townyprovinces.objects.TPCoord tpCoord : province.getListOfCoordsInProvince()) {
+		   com.palmergames.bukkit.towny.object.WorldCoord wc = new com.palmergames.bukkit.towny.object.WorldCoord(worldName, tpCoord.getX(), tpCoord.getZ());
+		   if (!com.palmergames.bukkit.towny.TownyAPI.getInstance().isWilderness(wc)) {
+			   hasTownBlock = true;
+			   break;
+		   }
+	   }
+	   if (!hasTownBlock) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_no_townblock_in_province"));
+		   return;
+	   }
+	   // 3. Flood fill from the player's location to find all contiguous wilderness plots within the province
+	   java.util.Set<String> visited = new java.util.HashSet<>();
+	   java.util.Queue<io.github.townyadvanced.townyprovinces.objects.TPCoord> queue = new java.util.LinkedList<>();
+	   io.github.townyadvanced.townyprovinces.objects.TPCoord startTPCoord = new io.github.townyadvanced.townyprovinces.objects.TPFinalCoord(x, z);
+	   queue.add(startTPCoord);
+	   visited.add(x + "," + z);
+	   java.util.List<com.palmergames.bukkit.towny.object.WorldCoord> coordsToClaim = new java.util.ArrayList<>();
+	   java.util.Set<String> provinceCoords = new java.util.HashSet<>();
+	   
+	   // Create a set of coordinates within the province for easier lookup
+	   for (io.github.townyadvanced.townyprovinces.objects.TPCoord tp : province.getListOfCoordsInProvince()) {
+		   provinceCoords.add(tp.getX() + "," + tp.getZ());
+	   }
+	   
+	   // Make sure the starting point is actually in the province
+	   if (!provinceCoords.contains(x + "," + z)) {
+		   Messaging.sendMsg(sender, Translatable.of("msg_err_invalid_province_location"));
+		   return;
+	   }
+	   
+	   int[][] directions = { {1,0}, {-1,0}, {0,1}, {0,-1} };
+	   while (!queue.isEmpty()) {
+		   io.github.townyadvanced.townyprovinces.objects.TPCoord curr = queue.poll();
+		   com.palmergames.bukkit.towny.object.WorldCoord currWC = new com.palmergames.bukkit.towny.object.WorldCoord(worldName, curr.getX(), curr.getZ());
+		   if (com.palmergames.bukkit.towny.TownyAPI.getInstance().isWilderness(currWC)) {
+			   coordsToClaim.add(currWC);
+			   // Explore neighbors
+			   for (int[] dir : directions) {
+				   int nx = curr.getX() + dir[0];
+				   int nz = curr.getZ() + dir[1];
+				   String key = nx + "," + nz;
+				   if (!provinceCoords.contains(key)) continue; // Stay within province
+				   if (visited.contains(key)) continue;
+				   
+				   visited.add(key); // Mark as visited right away
+				   
+				   com.palmergames.bukkit.towny.object.WorldCoord neighborWC = new com.palmergames.bukkit.towny.object.WorldCoord(worldName, nx, nz);
+				   if (com.palmergames.bukkit.towny.TownyAPI.getInstance().isWilderness(neighborWC)) {
+					   queue.add(new io.github.townyadvanced.townyprovinces.objects.TPFinalCoord(nx, nz));
+				   }
+			   }
+		   }
+	   }
+	   // 4. Attempt to claim all found wilderness plots
+	   int claimed = 0;
+	   
+	   // Save original location to return player later
+	   org.bukkit.Location originalLocation = player.getLocation();
+	   
+	   try {
+		   for (com.palmergames.bukkit.towny.object.WorldCoord worldCoord : coordsToClaim) {
+			   try {
+				   org.bukkit.World bukkitWorld = org.bukkit.Bukkit.getWorld(worldCoord.getWorldName());
+				   if (bukkitWorld == null) continue;
+				   int bx = (worldCoord.getX() << 4) + 8;
+				   int bz = (worldCoord.getZ() << 4) + 8;
+				   
+				   // Find suitable Y position (don't teleport into void or solid blocks)
+				   int by = 64;
+				   if (bukkitWorld.getHighestBlockYAt(bx, bz) > 0) {
+					   by = bukkitWorld.getHighestBlockYAt(bx, bz);
+				   }
+				   
+				   // Verify this plot is still wilderness before teleporting
+				   if (!com.palmergames.bukkit.towny.TownyAPI.getInstance().isWilderness(worldCoord)) {
+					   continue;
+				   }
+				   
+				   org.bukkit.Location claimLoc = new org.bukkit.Location(bukkitWorld, bx, by, bz);
+				   player.teleport(claimLoc);
+				   
+				   // Brief delay to allow teleport to complete
+				   try {
+					   Thread.sleep(50);
+				   } catch (InterruptedException e) {
+					   Thread.currentThread().interrupt();
+				   }
+				   
+				   boolean result = player.performCommand("town claim");
+				   if (result) claimed++;
+			   } catch (Exception e) {
+				   // Ignore already claimed or error
+			   }
+		   }
+	   } finally {
+		   // Return the player to their original location
+		   player.teleport(originalLocation);
+	   }
+	   
+	   Messaging.sendMsg(sender, Translatable.of("msg_claimed_plots_in_province", String.valueOf(claimed)));
+   }
 
-	private void showHelp(CommandSender sender) {
-		TownyMessaging.sendMessage(sender, ChatTools.formatTitle("/townyprovincesadmin"));
-		TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "province settype [civilized|sea|wasteland] [<x>,<z>]", ""));
-		TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "province settype [civilized|sea|wasteland] [<x>,<z>] [<x>,<z>]", ""));
-		TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "region [regenerate] [<Region Name>]", ""));
-		TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "region [newtowncostperchunk] [<Region Name>] [amount]", ""));
-		TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "region [upkeeptowncostperchunk] [<Region Name>] [amount]", ""));
-		TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "landvalidationjob [status|start|stop|restart|pause]", ""));
-		TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "reload", ""));
-	}
+   private void showHelp(CommandSender sender) {
+	   TownyMessaging.sendMessage(sender, ChatTools.formatTitle("/townyprovincesadmin"));
+	   TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "province settype [civilized|sea|wasteland] [<x>,<z>]", ""));
+	   TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "province settype [civilized|sea|wasteland] [<x>,<z>] [<x>,<z>]", ""));
+	   TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "region [regenerate] [<Region Name>]", ""));
+	   TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "region [newtowncostperchunk] [<Region Name>] [amount]", ""));
+	   TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "region [upkeeptowncostperchunk] [<Region Name>] [amount]", ""));
+	   TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "landvalidationjob [status|start|stop|restart|pause]", ""));
+	   TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "claimAllPlots", "Claims all unclaimed plots in your province for your town."));
+	   TownyMessaging.sendMessage(sender, ChatTools.formatCommand("Eg", "/tpra", "reload", ""));
+   }
 
 	private void parseReloadCommand(CommandSender sender, String[] args) {
 		TownyProvinces.getPlugin().reloadConfigsAndData();
