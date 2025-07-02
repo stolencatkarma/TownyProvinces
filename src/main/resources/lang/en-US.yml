@@ -38,7 +38,9 @@ word_sea: "Sea"
 word_wasteland: "Wasteland"
 msg_province_already_given_type: "&cProvince type is already %s."
 msg_province_type_successfully_set: "&bProvince type was set to %s. The map will be updated shortly."
-msg_province_types_in_area_successfully_set: "&bAll provinces in the given area were set to type %s."
+msg_claimed_plots_in_province: "&bClaimed %s plots in your province for your town."
+msg_err_no_townblock_in_province: "&cYour province must have at least one town block to claim all plots."
+msg_err_not_in_wilderness: "&cYou must be standing in wilderness to use this command."
 msg_err_invalid_province_location: "&cThe given co-ordinate was either mis-formatted, on a border, or outside the map."
 
 # Regenerate region
